@@ -124,25 +124,26 @@ func NewFdset() *Fdset {
 				}
 			}
 
-			dur := 100 * time.Millisecond
+			dur := time.Hour
 			if have_tm {
 				dur = tm.Sub(time.Now())
-				if dur < 0 {
-					dur = 1
-				}
 			}
 
-			n, err := syscall.EpollWait(efd, evs, int(dur/time.Millisecond))
-			if err != nil {
-				if eno, ok := err.(syscall.Errno); !ok || !eno.Temporary() {
-					// notify fdset poll loop error
-					for _, li := range self.wListener {
-						li.FdListen(err)
+			evLen := 0
+			if dur > 0 {
+				if n, err := syscall.EpollWait(efd, evs, int(dur/time.Millisecond)); err != nil {
+					if eno, ok := err.(syscall.Errno); !ok || !eno.Temporary() {
+						// notify fdset poll loop error
+						for _, li := range self.wListener {
+							li.FdListen(err)
+						}
+						for _, li := range self.rListener {
+							li.FdListen(err)
+						}
+						return
 					}
-					for _, li := range self.rListener {
-						li.FdListen(err)
-					}
-					return
+				} else {
+					evLen = n
 				}
 			}
 
@@ -169,7 +170,7 @@ func NewFdset() *Fdset {
 					}
 				}
 			}
-			for _, ev := range evs[:n] {
+			for _, ev := range evs[:evLen] {
 				if ev.Events&syscall.EPOLLOUT != 0 {
 					if li, ok := self.wListener[int(ev.Fd)]; ok {
 						if !li.FdListen(nil) {
